@@ -1,0 +1,79 @@
+pipeline {
+    
+    environment {
+        MSBuildPath = "${WORKSPACE}\\WhatsAppForBusiness\\WhatsAppForBusiness.sln"       
+        MSBuildoutput = "${WORKSPACE}\\WhatsAppForBusiness\\AUB.WAB.API\\bin"    
+	    DMLPath = "\\\\bhhqfs4\\dml\\Deployment\\WhatsAppForBusiness"
+	    DMLBackupPath = "${DMLPath}\\Backup"
+	    ServerIP = "\\\\172.25.28.65"
+	    DeploymentPath = "${ServerIP}"+'\\c$\\WhatsAppForBusiness'	 
+	    ServiceName = "AUB.Web"        
+    }
+    
+    agent any
+    stages {
+        stage('Checkout') {
+            steps {
+                 git credentialsId: 'DevOps', url: 'http://172.25.20.69/AUBCollection/WhatsApp%20for%20Business%20Project/_git/WhatsApp%20for%20Business%20Project'
+            }
+        }
+        
+        stage('approve')
+          {
+              steps{
+     mail body: "Approval needed for '${env.JOB_NAME} at ${env.BUILD_URL}",
+     subject : "${env.JOB_NAME} Approval" ,
+     to : "kaliraj.madasamy@ahliunited.com"     
+     timeout(time:7,unit:'MINUTES'){
+         input message : 'do you want to deploy?',
+         parameters:[string(defaultValue: '',description:'Provide any comments regarding decision.', name:'comments')],submitter:'ops'
+     }  
+              }
+}
+        
+        
+        stage('MSBuild'){
+            steps{
+          	   bat 'MSBuild ' + '"'  +  MSBuildPath + '"'  
+            }
+        }
+        
+       stage('DML Copy') {
+            steps {
+			   bat 'robocopy /S ' + '"' + MSBuildoutput + '" ' + DMLPath + ' & EXIT /B 0'
+            }
+        }
+      
+       stage('Deploy') {
+            steps {
+                echo 'Deploying....'
+				bat 'robocopy /S ' + DMLPath + ' ' + DeploymentPath + ' & EXIT /B 0'
+            }
+        }
+      
+        
+        
+    }
+    post {
+        
+        success {
+            echo 'I succeeeded!'
+            	emailext attachLog: false, body: 'WhatsApp for Business Release has been successfully build and deployed into Testing server. "', 
+            	compressLog: true, 
+            	subject: 'WhatsApp for Business Release build', to: 'kaliraj.madasamy@ahliunited.com'
+        }
+        unstable {
+            echo 'I am unstable :/'
+        }
+        failure {
+            echo 'I failed :('
+           emailext attachLog: true, body: 'WhatsApp for Business Release build Failed due to some error"',
+                    subject: 'WhatsApp for Business Release build failed', 
+                    to: 'kaliraj.madasamy@ahliunited.com'
+            	
+        }
+        changed {
+            echo 'Things were different before...'
+        }
+    }
+}
